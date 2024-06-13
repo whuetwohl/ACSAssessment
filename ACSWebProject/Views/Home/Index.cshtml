@@ -1,0 +1,188 @@
+﻿@model ACSWebProject.Models.HomeViewModel
+@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div class="text-center">
+    <div class="row">
+        <div class="col">
+            <p id="coords"></p>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-12 col-md-9 p-0" style="height: 800px">
+            <div id="map"></div>
+            <script>
+                //debugger;
+
+                (g => { var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window; b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams, u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]); e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => h = n(Error(p + " could not load.")); a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a) })); d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)) })({
+                    key: '@Model.apiKey',
+                    v: "beta",
+                    // Use the 'v' parameter to indicate the version to use (weekly, beta, alpha, etc.).
+                    // Add other bootstrap parameters as needed, using camel case.
+                });
+            </script>
+        </div>
+        <div id="weather" class="col-sm-12 col-md-3">
+            <div id="currentweather" class="row">
+            </div>
+        </div>
+    </div>
+    <div id="forecast" class="row mt-4">
+    </div>
+    <div id="detailedForecast" class="row mt-3 invisible">
+        <table class="table">
+            <thead>
+                <tr class="border border-secondary">
+                    <th class="p-0"><h5 class="m-0">Detailed Forecast</h5></th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let map;
+        let defaultLat = @ViewData["lat"];
+        let defaultLng = @ViewData["lng"];
+        let weatherAPI = "@ViewData["weatherAPI"]";
+        let defaultZoom = @ViewData["zoom"];
+        let disableDefaultUI = @ViewData["mapUI"];
+
+        debugger;
+
+        async function initMap() {
+
+            const { Map } = await google.maps.importLibrary("maps");
+            const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary(
+                "marker",
+            );
+            const map = new google.maps.Map(document.getElementById("map"), {
+                zoom: defaultZoom,
+                center: { lat: defaultLat, lng: defaultLng },
+                mapId: "DEMO_MAP_ID",
+                disableDefaultUI: disableDefaultUI,
+            });
+
+            const currentMarker = new AdvancedMarkerElement({
+                map,
+                position: { lat: defaultLat, lng: defaultLng },
+                // gmpDraggable: true,
+                // title: "This marker is draggable. Click to remove.",
+            });
+
+
+            map.addListener("click", (e) => {
+
+                let latLng = e.latLng;
+                let lat = latLng.toString().split(',')[0].replace('(', '').trim();
+                let lng = latLng.toString().split(',')[1].replace(')', '').trim();
+
+                currentMarker.position = e.latLng;
+                currentMarker.map = map;
+                placeMarkerAndPanTo(e.latLng, map);
+                //debugger;
+
+                let coordinateURL = `${weatherAPI}`.replace("lat", lat).replace("lng", lng);
+                $.ajax({
+                    type: "GET",
+                    url: coordinateURL,
+                    dataType: "text",
+                    success: function (result, status, jqXHR) {
+                        debugger;
+
+                        postRequestResult(JSON.parse(result).id, jqXHR.status, status, result);
+                        let jsonResult = JSON.parse(result);
+
+                        let forecastURL = jsonResult.properties.forecast;
+                        let location = `${jsonResult.properties.relativeLocation.properties.city}, ${jsonResult.properties.relativeLocation.properties.state}`;
+
+                        $.ajax({
+                            type: "GET",
+                            url: forecastURL,
+                            dataType: "text",
+                            success: function (innerresult, innerstatus, innerjqXHR) {
+                                debugger;
+
+                                postRequestResult(forecastURL, innerjqXHR.status, status, innerresult);
+                                jsonResult = JSON.parse(innerresult);
+
+                                let message = '';
+                                let imgSrc;
+                                let current = jsonResult.properties.periods[0];
+
+                                $("#currentweather").html("");
+                                $("#currentweather").append(`<div class="col-12"><h3>${location}</h3></div>`);
+                                $("#currentweather").append(`<div class="row"><p class="col-6 text-end">Temperature</p><p class="col-6 text-start">${current.temperature}&deg F</p></div>`);
+                                $("#currentweather").append(`<div class="row"><p class="col-6 text-end">Precipitation</p><p class="col-6 text-start">${current.probabilityOfPrecipitation.value ?? 0}%</p></div>`);
+                                $("#currentweather").append(`<div class="row"><p class="col-6 text-end">Humidity</p><p class="col-6 text-start">${current.relativeHumidity.value}%</p></div>`);
+                                $("#currentweather").append(`<div class="row"><p class="col-6 text-end">Wind Speed</p><p class="col-6 text-start">${current.windDirection} ${current.windSpeed}</p></div>`);
+                                $("#currentweather").append(`<div class="row"><p class="col-6 text-end">Dewpoint</p><p class="col-6 text-start">${parseInt(current.dewpoint.value) * 9 / 5 + 32}&deg F (${parseInt(current.dewpoint.value)}&deg C)</p></div>`);
+                                $("#currentweather").append(`<div class="row"><img src=${current.icon}></div>`);
+                                //debugger;
+
+                                $("#detailedForecast").removeClass("invisible");
+                                $("#tableBody").html("");
+                                $("#tableBody").append(`<tr class="border border-secondary"><td><div class="row"><strong class="col-2 text-end">${current.name}</strong><p class="col-10 text-start  mb-0">${current.detailedForecast}</p></div></<td></tr>`);
+
+
+
+                                $("#forecast").html("");
+                                for (let i = 1; i < 14; i++) {
+                                    let item = jsonResult.properties.periods[i];
+                                    if (item.name.includes("ight")) {
+                                        message = `Low - ${item.temperature}`;
+                                    }
+                                    else {
+                                        message = `High - ${item.temperature}`;
+                                    }
+                                    imgSrc = item.icon;
+                                    //debugger;
+                                    if (i < 10) {
+                                        $("#forecast").append(`<div class="col-1"><img src="${imgSrc}"><p>${message}</p><p>${item.name}</p></div>`);
+                                    }
+                                    $("#tableBody").append(`<tr class="border border-secondary"><td><div class="row"><strong class="col-2 text-end">${item.name}</strong><p class="col-10 text-start  mb-0">${item.detailedForecast}</p></div></<td></tr>`);
+
+                                }
+                            },
+                            error: function (req, status, error) {
+                                debugger;
+
+                                postRequestResult(forecastURL, req.status, status, req.responseText);
+                                alert("There was an error. Please contact the Help Desk");
+                            }
+                        })
+                    },
+                    error: function (req, status, error) {
+                        debugger;
+                        postRequestResult(coordinateURL, req.status, status, req.responseText);
+                        alert("There was an error. Please contact the Help Desk");
+                    }
+                });
+            });
+        }
+
+        function postRequestResult(url, responsecode, status, responsepayload) {
+            debugger;
+            $.ajax({
+                type: "POST",
+                url: "@Url.Action("PostRequestResponse")",
+                data: {
+                    url: url,
+                    responsecode: responsecode,
+                    status: status,
+                    responsepayload: responsepayload
+                },
+            });
+        }
+
+        function placeMarkerAndPanTo(latLng, map) {
+            map.panTo(latLng);
+        }
+
+        initMap();
+    </script>
+}
